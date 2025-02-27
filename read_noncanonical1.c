@@ -124,39 +124,54 @@ int main(int argc, char *argv[])
 			printf("Estado START\n");
 			
 			if(buf[0]==0x7E){
+				
 				estado_atual=Flag_RCV;
+				
 				}else{
+				
 					estado_atual=START;
+				
 					}
 			 
 			break;
 			
 			case Flag_RCV:
+			
 			printf("Estado Flag_RCV\n");
 			
 			if(buf[0]==0x03){
+			
 				estado_atual=A_RCV;
-				}else{
+			
+				}else if(buf[0]==0x7E){
+			
 					estado_atual=Flag_RCV;
-					}
+			
+					}else{
+						estado_atual=START;
+						}
 				break;
 			
 			case A_RCV:
 			printf("Estado A_RCV\n");
 			if(buf[0]==0x03){
 				estado_atual=C_RCV;
-				}else{
-					estado_atual=A_RCV;
-					}
+				}else if(buf[0]==0x7E){
+					estado_atual=Flag_RCV;
+					}else{
+						estado_atual=START;
+						}
 				break;
 			
 			case C_RCV:
 			printf("Estado C_RCV\n");
 			if(buf[0]== 0x03^0x03){
 				estado_atual=BCC_OK;
-				}else{
-					estado_atual=C_RCV;
-					}
+				}else if(buf[0]==0x7E){
+					estado_atual=Flag_RCV;
+					}else{
+						estado_atual=START;
+						}
 				break;
 			
 			case BCC_OK:
@@ -166,7 +181,7 @@ int main(int argc, char *argv[])
 				estado_atual=STP;
 				}else{
 					
-					estado_atual=BCC_OK;
+					estado_atual=START;
 				
 					}
 				break;
@@ -175,6 +190,7 @@ int main(int argc, char *argv[])
 			
 			STOP = TRUE;
 
+        
         
 	}
             
