@@ -102,7 +102,10 @@ int main(int argc, char *argv[])
 
     // Loop for input
     unsigned char buf[BUF_SIZE + 1] = {0}; // +1: Save space for the final '\0' char
-
+    unsigned char frame[5] = {0};
+    int index = 0;
+    
+    
     while (STOP == FALSE)
     {
         // Returns after 5 chars have been input
@@ -116,15 +119,16 @@ int main(int argc, char *argv[])
         
         int bytes = read(fd,buf,1);
         
-        printf("0x%02X\n", buf[0]);
+        //printf("0x%02X\n", buf[0]); diz nos o que está na posição 0
         
         switch(estado_atual){
 			case START:
 			
-			printf("Estado START\n");
+			//printf("Estado START\n");
 			
 			if(buf[0]==0x7E){
 				
+				frame[index++]=buf[0];
 				estado_atual=Flag_RCV;
 				
 				}else{
@@ -137,60 +141,107 @@ int main(int argc, char *argv[])
 			
 			case Flag_RCV:
 			
-			printf("Estado Flag_RCV\n");
+			//printf("Estado Flag_RCV\n");
 			
 			if(buf[0]==0x03){
-			
+				frame[index++]=buf[0];
 				estado_atual=A_RCV;
 			
 				}else if(buf[0]==0x7E){
-			
+					index = 1;
 					estado_atual=Flag_RCV;
 			
 					}else{
+						index=0;
 						estado_atual=START;
 						}
 				break;
-			
+				
+				
 			case A_RCV:
-			printf("Estado A_RCV\n");
+			
+			//printf("Estado A_RCV\n");
+			
 			if(buf[0]==0x03){
+				
+				frame[index++]=buf[0];
 				estado_atual=C_RCV;
+				
 				}else if(buf[0]==0x7E){
+					
+					index=1;
 					estado_atual=Flag_RCV;
+					
 					}else{
+						index = 0;
 						estado_atual=START;
 						}
 				break;
+			
 			
 			case C_RCV:
-			printf("Estado C_RCV\n");
+			
+			//printf("Estado C_RCV\n");
+			
 			if(buf[0]== 0x03^0x03){
+				
+				frame[index++]=buf[0];
+				
 				estado_atual=BCC_OK;
+				
 				}else if(buf[0]==0x7E){
+					index = 1;
 					estado_atual=Flag_RCV;
+					
 					}else{
+						
+						index=0;
 						estado_atual=START;
+						
 						}
 				break;
 			
 			case BCC_OK:
-			printf("Estado BCC_RCV\n");
+			
 			if(buf[0]==0x7E){
-				printf("Estado STOP\n");
+				
+				frame[index++]= buf[0];
 				estado_atual=STP;
+				
 				}else{
 					
+					index = 0;
 					estado_atual=START;
 				
 					}
 				break;
 			
 			case STP:
-			
-			STOP = TRUE;
+			// Ver se recebemos o frame
+				printf("SET frame recebido.\n");
 
-        
+					// Vamos imprimir os frames
+					
+					printf("Frame recebido:\n ");
+					
+					for (int i = 0; i < 5; i++) {
+						printf("0x%02X\n", frame[i]);
+					}
+					
+					
+					unsigned char setFrame[BUF_SIZE] = {0};
+					setFrame[0] = 0x7E;
+					setFrame[1] = 0x01;
+					setFrame[2] = 0x07;
+					setFrame[3] = setFrame[1]^setFrame[2]; 
+					setFrame[4] = 0x7E;
+					
+					
+					int bytes = write(fd, setFrame, 5);
+					printf("cheguei\n");
+					
+					STOP = TRUE;
+				break;
         
 	}
             
