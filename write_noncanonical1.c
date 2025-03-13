@@ -30,7 +30,7 @@
 #define STP 5
 
 volatile int STOP = FALSE;
-volatile int alarmEnabled = TRUE; // Alarme habilitado
+volatile int alarmEnabled = FALSE; // Alarme habilitado
 int alarmCount = 0;  // Contador do número de alarmes
 
 void alarmHandler(int signal) {
@@ -126,16 +126,15 @@ int main(int argc, char *argv[])
 
     int bytes = write(fd, setframe,BUF_SIZE);
     printf("%d bytes written\n", bytes);
-        
-    /*while (alarmCount < 4)
+       
+    while (alarmCount < 4)
     {
         if (alarmEnabled == FALSE)
         {
             alarm(3); // Set alarm to be triggered in 3s
             alarmEnabled = TRUE;
         }
-    }*/
-
+    }
     unsigned char buf[BUF_SIZE] = {0};
     unsigned char frame[5] = {0};
     int index = 0;
@@ -148,22 +147,14 @@ int main(int argc, char *argv[])
             write(fd, setframe, 5);  // Write again if alarm is triggered
         }
         int bytes = read(fd, buf, 1);
-        printf("OLA\n");
+        printf("Leu\n");
         
-        while (alarmCount < 4)
-    {
-        if (alarmEnabled == FALSE)
-        {
-            alarm(3); // Set alarm to be triggered in 3s
-            alarmEnabled = TRUE;
-        }
-    }
 
-        if (bytes > 0) {
+        //if (bytes > 0) {
             switch (setstate) {
                 case START:
 
-                printf("ola\n");
+                printf("ola\n"); 
 
                     if (buf[0] == 0x7E) {
                         frame[index++] = buf[0];
@@ -173,9 +164,11 @@ int main(int argc, char *argv[])
                     break;
 
                 case Flag_RCV:
+                        
+                    printf("Flag\n");
 
                     if (buf[0] == 0x01) {
-
+                        
                         frame[index++] = buf[0];
                         setstate = A_RCV;
 
@@ -191,6 +184,8 @@ int main(int argc, char *argv[])
 
                 case A_RCV:
 
+                   printf("A\n");
+
                     if (buf[0] == 0x07) {
                         frame[index++] = buf[0];
                         setstate = C_RCV;
@@ -204,6 +199,9 @@ int main(int argc, char *argv[])
                     break;
 
                 case C_RCV:
+
+                   printf("C\n");
+
                     if (buf[0] == (0x01 ^ 0x07)) {
                         frame[index++] = buf[0];
                         setstate = BCC_OK;
@@ -217,6 +215,9 @@ int main(int argc, char *argv[])
                     break;
 
                 case BCC_OK:
+
+                   printf("BCC\n");
+
                     if (buf[0] == 0x7E) {
                         frame[index++] = buf[0];
                         setstate = STP;
@@ -231,10 +232,10 @@ int main(int argc, char *argv[])
                     alarm(0); // Disable the alarm
                     break;
             }
-        } else if (bytes < 0) {
-            perror("Erro ao ler da porta");
-            break;
-        }
+        //} else if (bytes < 0) {
+          //  perror("Erro ao ler da porta");
+            //break;
+        //}
     }
 
      /*while(STOP==FALSE){
