@@ -152,7 +152,7 @@ int llopen(LinkLayer connectionParameters)
                 
                   case BCC_OK:
                   if(buf == FLAG){
-                    estado_atual = STOP;
+                    estado_atual = STP;
                   }else{
                     estado_atual = START;
                   }
