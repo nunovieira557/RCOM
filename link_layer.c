@@ -152,7 +152,7 @@ int llopen(LinkLayer connectionParameters)
                 
                   case BCC_OK:
                   if(buf == FLAG){
-                    estado_atual = STP;
+                    estado_atual = STOP;
                   }else{
                     estado_atual = START;
                   }
@@ -419,9 +419,149 @@ int llwrite(int fd,char *buffer, int length, LinkLayer connectionParameters)
 ////////////////////////////////////////////////
 int llread(int fd, char *buffer)
 {
-    // TODO
-
-    return 0;
+  unsigned char frame[2*MAX_SIZE+6];
+  unsigned char no_byte;
+  int frame_length = 0;
+  
+  int estado = START;
+  int run = TRUE;
+  
+  while(run){
+    if(alarmEnabled == FALSE){
+      alarm(3);
+      alarmEnabled = TRUE;
+    }
+    
+    int byte = read(fd, &no_byte,1);
+    
+    switch(estado){
+      case START:
+          if (no_byte == FLAG)
+            {
+                frame_length = 0;
+                frame[frame_length++] = no_byte;
+                estado = FLAG_RCV;
+            }
+            break;
+        case FLAG_RCV:
+        if(no_byte == FLAG){
+          frame_length = 1;
+        }else if(no_byte == A_RCV){
+          frame[frame_length++] = no_byte;
+          estado = A_RCV;
+        }else{
+          estado = START;
+          frame_length = 0;
+        }
+        break;
+        case A_RCV:
+        if(no_byte == FLAG){
+          estado = FLAG_RCV;
+          frame_length = 1;
+        }else if(no_byte == C_I0 || no_byte == C_I1){
+          frame[frame_length++] = no_byte;
+          estado = C_RCV;
+        }else{
+          estado = START;
+          frame_length = 0;
+        }
+        break;
+        case C_RCV:
+        if(no_byte == FLAG){
+          estado = FLAG_RCV;
+          frame_length = 1;
+        }else if(no_byte == (frame[1]^frame[2])){
+          frame[frame_length++] = no_byte;
+          estado = BCC_OK;
+        }else{
+          estado = START;
+          frame_length = 0;
+        }
+        break;
+        case BCC_OK:
+        
+        if(no_byte == FLAG){
+          frame[frame_length++] = no_byte;
+          estado = STP;
+        }else{
+          frame[frame_length++]=no_byte
+        }
+        break;
+        default:
+        estado = START;
+        break;
+    }
+  }
+  //Precisamos de ler o que está no data field e o BCC2, mas precisamos de fazer destuffing primeiro
+  unsigned char BCC2_RCV;
+  int foi_BCC2_stuffed = FALSE;
+    // frame_length -1 -2 é para chegar à posição onde se posiciona o ESC 
+    if(frame[frame_length-1 -2] == ESC){ 
+    // frame_length -1 -1 é para chegar à posição do BCC2
+      BCC2_RCV = frame[frame_length-1 -1] ^0x20;
+      foi_BCC2_stuffed = TRUE;
+    }else{
+      BCC2_RCV = frame[frame_length-1 -1]
+    }
+    int tamanho_data = frame_length - 6 - foi_BCC2_stuffed; //Tamanho da data excluindo FLAG, A, C,BCC1,FLAG e BCC2
+    
+    unsigned char destuffed_data[tamanho_data];
+    int destuffed_length = 0;
+    //Vamos detetar o byte stuffing, mas temos que encontrar primeiro onde aparece a data e antes do BCC2
+    for(int i = 4; i < tamanho_data+4 ; i++){
+      if(frame[i] == ESC){ //Byte stuffing foi detetado, ou seja, o byte stuffing está feito no llwrite(), então temos que procurar o ESC ---> significa que existiu byte stuffing
+      
+        destuffed_data[destuffed_length++] = frame[++i] ^0x20;
+      
+      }else {
+      
+        destuffed_data[destuffed_length++] = frame[i];
+      }
+    }
+    
+    //Confirmar se o BCC2 está correto, mas temos que calcular primeiro o BCC2
+    unsigned char checkBCC2 = 0;
+    
+    for(int i=0; i < destuffed_length; i++){
+      checkBCC2 ^= destuffed_data[i]; 
+    }
+    if(cont_Tx == 0){
+      RR = C_RR0;
+      REJ = C_REJ1;
+    }
+    if(cont_Rx == 1){
+      RR = C_RR1;
+      REJ = C_REJ0;
+    }
+    
+    if(BCC2 ==checkBCC2){
+      estado = STP; //Se é válido o packet
+      unsigned char frame_leitura[BUF_SIZE] = {0};
+      //Enviar o frame de reconhecimento 
+      frame_leitura[0] = FLAG;
+      frame_leitura[1] = A_RT;
+      frame_leitura[2] = RR;
+      frame_leitura[3] = frame_leitura[1] ^ frame_leitura[2]; //Calcula o BCC1 para o reconhecimento
+      frame_leitura[4] = FLAG;
+      write(fd, frame_leitura, BUF_SIZE); //Enviar o frame de reconhecimento 
+      cont_Tx = (cont_Rx + 1) % 2
+      
+    }//Se BCC2 estiver errado, envia rejeição
+    else{
+      unsigned char frame_leitura[BUF_SIZE] = {0};
+      frame_leitura[0] = FLAG;
+      frame_leitura[1] = A_RT;
+      frame_leitura[2] = REJ;
+      frame_leitura[3] = frame_leitura[1] ^ frame_leitura[2];//Cálculo de BCC1 para rejeição
+      frame_leitura[4] = FLAG;
+      write(fd, frame_leitura, BUF_SIZE);
+      return -1;
+    }
+    
+    //este comando copia a data para o output do buffer
+    memcpy(buffer, destuffedData, destuffedLength);
+    
+    return destuffed_length;
 }
 
 ////////////////////////////////////////////////
