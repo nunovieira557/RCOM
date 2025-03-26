@@ -5,17 +5,17 @@
 //Valores Header
 #define FLAG 0x7E
 #define ESC 0x7D
-#define A_TR 0x03 // Address field in frames that are commands sent by the Transmitter or replies sent by the Receiver (A_ER)
-#define A_RT 0x01 // Address field in frames that are commands sent by the Receiver or replies sent by the Transmitter (A_RE)
-#define C_SET 0x03
-#define C_UA 0x07
-#define C_I0 0x00
-#define C_I1 0x40
-#define C_RR0 0x05
-#define C_RR1 0x85
-#define C_REJ0 0x01
-#define C_REJ1 0x81
-#define C_DISC 0x0B
+#define A_TR 0x03 //comando mandado pelo transmissor ou resportas mandadas pelo recetor
+#define A_RT 0x01 //comando mandado pelo recetor ou resportas mandadas pelo transmissor
+#define C_SET 0x03 //mandado pelo transmissor para iniciar conexao
+#define C_UA 0x07 //confirmacao de rececao de um frame de supervisao
+#define C_I0 0x00 //inf frame 0
+#define C_I1 0x40 //inf frame 1
+#define C_RR0 0x05 //recetor manda a dizer q esta pronto para receber inf frame 0
+#define C_RR1 0x85 //recetor manda a dizer q esta pronto para receber inf frame 1
+#define C_REJ0 0x01 //recetor manda a dizer q rejeita inf frame 0
+#define C_REJ1 0x81 //recetor manda a dizer q rejeita inf frame 1
+#define C_DISC 0x0B //indica termino da conexao
 
 //Estados
 #define START 0
@@ -40,19 +40,16 @@ volatile int STOP = FALSE;
 int alarmEnabled = FALSE;
 int alarmcount = 0;
 
-int reTransmissions = 0;
+int retransmissions = 0;
 int timeout = 0;
 
-int reTransmissions_g = 0;
-int timeout_g = 0;
+int retransmissions_total = 0;
+int timeout_total = 0;
 
 //Variaveis de controlo para saber se os frames Is são I0 ou I1
 
 unsigned char cont_Tx = 0;
 unsigned char cont_Rx = 0;
-
-
-//Podiamos fazer uma função para uma máquina de estados, se tiver tempo faço
 
 //Implementação do alarme 
 void alarmHandler (int signal){
@@ -66,7 +63,6 @@ void alarmHandler (int signal){
 ////////////////////////////////////////////////
 int llopen(LinkLayer connectionParameters)
 {
-    
     int fd = open(serialPortName, O_RDWR | O_NOCTTY);
     if (fd < 0)
     {
@@ -567,9 +563,237 @@ int llread(int fd, char *buffer)
 ////////////////////////////////////////////////
 // LLCLOSE
 ////////////////////////////////////////////////
-int llclose(int fd)
+int llclose(int fd, int showStatistics)
 {
-    // TODO
+    int state = START;
+    (void) signal(SIGALRM, alarmHandler);
+    unsigned char byte_rd;
+   
+    while((state != STP) && (retrans > 0)){
+        if(set.role == LlTx){
+            unsigned char disc[BUF_SIZE] = {0};
+            disc[0] = FLAG;
+            disc[1] = A_TR;
+            disc[2] = C_DISC;
+            disc[3] = disc[1]^disc[2];
+            disc[4] = FLAG;
+
+            int bytes = write(fd, disc, BUF_SIZE);
+
+            printf("%s\n", "First DISC sent - Tx");
+        }
+      
+        alarm(timeout); //retransmitimos caso DISC se perca, pois e este que inicia a desconexao
+        timeout_total++;
+
+        int alarmclosed = TRUE;
+        int byte = read(fd, &byte_rd, 1);
+
+        while((state != STP) && (alarmclosed == TRUE) && (set.role == LlRx)){
+            if(byte_rd > 0){
+                switch(state){
+                    case START:
+                    if(byte_rd == FLAG){
+                        state = FLAG_RCV;
+                    }
+                    break;
+                    
+                    case FLAG_RCV:
+                    if(byte_rd == A_TR){
+                        state = A_RCV;
+                    }else if(byte_rd != FLAG){
+                        state = START;
+                    }
+                    break;
+                    
+                    case A_RCV: 
+                    if(byte_rd == C_DISC){
+                        state = C_RCV;
+                    }else if(byte_rd == FLAG){
+                        state = FLAG_RCV;
+                    }else{
+                        state = START:
+                    }
+                    break;
+                    
+                    case C_RCV:
+                    if(byte_rd == (A_TR ^ C_DISC)){
+                        state = BCC_OK;
+                    }else if(byte_rd == FLAG){
+                        state = FLAG_RCV;
+                    }else{
+                        state = START;
+                    }
+                    break;
+                
+                    case BCC_OK:
+                    if(byte_rd == FLAG){
+                        state = STP;
+                    }else{
+                        state = START;
+                    }
+                    
+                    case STP:
+                    break;
+                }
+            }
+        }
+        if((state == STP) && (set.role == LlRx)){ //DISC recebido, agora enviamos como recetor
+            printf("%s\n", "First DISC received - Rx");
+           
+            unsigned char secdisc[BUF_SIZE] = {0};
+            secdisc[0] = FLAG;
+            secdisc[1] = A_RT;
+            secdisc[2] = C_DISC;
+            secdisc[3] = secdisc[1]^secdisc[2];
+            secdisc[4] = FLAG;
+
+            int bytes = write(fd, secdisc, BUF_SIZE);
+
+            printf("%s\n", "Second DISC sent - Rx");
+
+            state = START;
+            alarmclosed = FALSE; //Recebemos DISC, fechamos alarme
+        }//este DISC n precisa de alarm pq o recetor só envia DISC qnd o 1º foi recebido, logo a desconexao ja foi reconhecida
+        
+        int byte = read(fd, &byte_rd, 1);
+
+        while((state != STP) && (alarmclosed == TRUE) && (set.role == LlTx)){ //Recebemos e verificamos DISC como transmissor
+            if(byte_rd > 0){
+                switch(state){
+                    case START:
+                    if(byte_rd == FLAG){
+                        state = FLAG_RCV;
+                    }
+                    break;
+                    
+                    case FLAG_RCV:
+                    if(byte_rd == A_RT){
+                        state = A_RCV;
+                    }else if(byte_rd != FLAG){
+                        state = START;
+                    }
+                    break;
+                    
+                    case A_RCV: 
+                    if(byte_rd == C_DISC){
+                        state = C_RCV;
+                    }else if(byte_rd == FLAG){
+                        state = FLAG_RCV;
+                    }else{
+                        state = START:
+                    }
+                    break;
+                    
+                    case C_RCV:
+                    if(byte_rd == (A_RT ^ C_DISC)){
+                        state = BCC_OK;
+                    }else if(byte_rd == FLAG){
+                        state = FLAG_RCV;
+                    }else{
+                        state = START;
+                    }
+                    break;
+                
+                    case BCC_OK:
+                    if(byte_rd == FLAG){
+                        state = STP;
+                    }else{
+                        state = START;
+                    }
+                    
+                    case STP:
+                    break;
+                }
+            }
+        }
+        if((state == STP) && (set.role == LlTx)){ //DISC recebido, enviamos UA 
+            printf("%s\n", "Second DISC received - Tx");
+           
+            unsigned char ua[BUF_SIZE] = {0};
+            ua[0] = FLAG;
+            ua[1] = A_TR;
+            ua[2] = C_UA;
+            ua[3] = ua[1]^ua[2];
+            ua[4] = FLAG;
+
+            int bytes = write(fd, ua, BUF_SIZE);
+
+            printf("%s\n", "UA sent - Tx"); //n se usa alarme porque a conexao ja esta praticamente encerrada, ua e uma confirmacao
+        }
+
+        int byte = read(fd, &byte_rd, 1);
+
+        while((state != STP) && (alarmclosed == FALSE) && (set.role == LlRx)){ 
+            if(byte_rd > 0){
+                switch(state){
+                    case START:
+                    if(byte_rd == FLAG){
+                        state = FLAG_RCV;
+                    }
+                    break;
+                    
+                    case FLAG_RCV:
+                    if(byte_rd == A_TR){
+                        state = A_RCV;
+                    }else if(byte_rd != FLAG){
+                        state = START;
+                    }
+                    break;
+                    
+                    case A_RCV: 
+                    if(byte_rd == C_UA){
+                        state = C_RCV;
+                    }else if(byte_rd == FLAG){
+                        state = FLAG_RCV;
+                    }else{
+                        state = START:
+                    }
+                    break;
+                    
+                    case C_RCV:
+                    if(byte_rd == (A_TR ^ C_UA)){
+                        state = BCC_OK;
+                    }else if(byte_rd == FLAG){
+                        state = FLAG_RCV;
+                    }else{
+                        state = START;
+                    }
+                    break;
+                
+                    case BCC_OK:
+                    if(byte_rd == FLAG){
+                        state = STP;
+                    }else{
+                        state = START;
+                    }
+                    
+                    case STP:
+                    break;
+                }
+            }
+        } 
+        
+        retransmissions --;
+        retransmissions_total ++;
+    }
+
+    if(showStatistics){
+        printf("\n --- Communications Statistics --- \n");
+        printf("Number of retransmissions: %d\n", retransmissions_total); 
+        printf("Number of timeouts: %d\n", timeout_total); 
+    }
+
+    if(state != STP){
+        printf("%s\n", "Error closing.");
+
+        return -1;
+    }
+
+    if(state == STP){
+        printf("%s\n", "Closed");
+    }
 
     return 1;
 }
+
