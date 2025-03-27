@@ -50,6 +50,8 @@ int timeout = 0;
 int retrans_total = 0; 
 int timeout_total = 0; 
 int state = START;
+//Serial port settings
+static struct termios oldtio, newtio;
 
 //Variaveis de controlo para saber se os frames Is são I0 ou I1
 unsigned char cont_Tx = 0;
