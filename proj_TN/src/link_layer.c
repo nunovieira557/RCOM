@@ -130,7 +130,7 @@ LinkLayer set;
 void alarmHandler(int signal){
     alarmEnabled = FALSE;
     alarmCount++;
-
+    timeout_total++;
     printf("Alarm #%d\n", alarmCount);
 }
 
@@ -172,7 +172,6 @@ int llopen(LinkLayer connectionParameters){
 
                 write_Bytes(frame, BUF_SIZE);//manda SET p inicializar comunicacao
                 alarm(timeout);//liga alarme qnd passar timeout
-                timeout_total++;
                 alarmEnabled = TRUE;
 
                 //espera por uma resposta ate timeout
@@ -380,7 +379,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
     while(counterwrite < reTrans){
         //define alarme p disparar apos timeout segundos e ativa alarme
         alarm(timeout);
-        timeout_total++;
+        //timeout_total++;
         alarmEnabled = TRUE;
         rejected = FALSE;
         accepted = FALSE;
@@ -470,7 +469,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
         //restart no alarme se for preciso
         if(alarmEnabled == FALSE){
             alarm(timeout);
-            timeout_total++;
+            //timeout_total++;
             alarmEnabled = TRUE;
         }
     }
@@ -635,7 +634,7 @@ int llclose(int showStatistics)
             printf("%s\n", "First Disc Tx Sent");
         }
         alarm(timeout); //retransmitimos caso DISC se perca, pois e este que inicia a desconexao
-        timeout_total++; 
+        //timeout_total++; 
 
         int alarmEnabledClose = TRUE;
 
